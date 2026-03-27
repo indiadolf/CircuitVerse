@@ -89,6 +89,10 @@ class AssignmentsController < ApplicationController
     @assignment.description = description
     @assignment.status = "open"
     @assignment.deadline = 1.year.from_now if @assignment.deadline.nil?
+    if @assignment.deadline.present? && @assignment.deadline < Time.current
+      @assignment.errors.add(:deadline, "cannot be in the past")
+      render :new, status: :unprocessable_entity and return
+    end
 
     if Flipper.enabled?(:lms_integration, current_user)
       @assignment.lti_consumer_key = lti_consumer_key
@@ -109,14 +113,25 @@ class AssignmentsController < ApplicationController
   # PATCH/PUT /assignments/1
   # PATCH/PUT /assignments/1.json
   def update
-    description = params["description"]
+    description = params[:description]
+    update_params = assignment_update_params
+    new_deadline = update_params[:deadline]
 
+    if new_deadline.present?
+      parsed_deadline = Time.zone.parse(new_deadline)
+
+      if parsed_deadline && parsed_deadline < Time.current
+        @assignment.errors.add(:deadline, "cannot be in the past")
+        render :edit, status: :unprocessable_entity and return
+      end
+    end
+    
     if Flipper.enabled?(:lms_integration, current_user) && params["lms-integration-check"]
       lti_consumer_key = @assignment.lti_consumer_key.presence || SecureRandom.hex(4)
       lti_shared_secret = @assignment.lti_shared_secret.presence || SecureRandom.hex(4)
     end
 
-    params = assignment_update_params
+    params = update_params
     @assignment.description = description
 
     if Flipper.enabled?(:lms_integration, current_user)
